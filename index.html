@@ -76,11 +76,6 @@
                 this.mouseX = 0;
                 this.mouseY = 0;
                 this.attractionPoint = new THREE.Vector3();
-                this.clickPosition = new THREE.Vector3();
-                this.scareEffect = false;
-                this.scareRadius = 8;
-                this.lastClickTime = 0;
-                this.clickDelay = 300; // Double-click detection window (ms)
                 
                 // Performance monitoring
                 this.frameCount = 0;
@@ -102,10 +97,10 @@
                 this.scene = new THREE.Scene();
                 this.scene.fog = null; // No fog for white background
 
-                // Camera - Top-down view 
+                // Camera - Front view like looking through aquarium glass
                 this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-                this.camera.position.set(0, 15, 0); // Above aquarium, looking down
-                this.camera.lookAt(0, 0, 0); // Look down at center of aquarium
+                this.camera.position.set(0, 0, 20); // In front, looking at fish
+                this.camera.lookAt(0, 0, 0); // Look at center of aquarium
 
                 // Optimized renderer settings for ARM
                 this.renderer = new THREE.WebGLRenderer({ 
@@ -125,13 +120,13 @@
             }
 
             setupLights() {
-                // Bright lighting for top-down aquarium view (matching test page)
+                // Bright lighting for front view
                 const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
                 this.scene.add(ambientLight);
 
-                // Light from above like aquarium lighting
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-                directionalLight.position.set(10, 10, 5); // From front-right-above (like test page)
+                // Light from front like room lighting
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
+                directionalLight.position.set(10, 10, 5); // From front-right-above
                 this.scene.add(directionalLight);
             }
 
@@ -225,39 +220,22 @@
                     mesh: fishMesh,
                     mixer: null,
                     velocity: new THREE.Vector3(
-                        (Math.random() - 0.5) * 0.04, // Random X movement
-                        0, // Y is vertical (up/down from camera)
-                        (Math.random() - 0.5) * 0.04  // Random Z movement (depth in aquarium)
+                        (Math.random() > 0.5 ? 1 : -1) * (0.01 + Math.random() * 0.01), // Left or right
+                        (Math.random() - 0.5) * 0.005, // Minimal vertical movement
+                        0 // No depth movement towards screen
                     ),
                     position: new THREE.Vector3(
-                        (Math.random() - 0.5) * 20, // Random X position across aquarium
-                        0, // Fish swim at water surface level (Y=0)
-                        (Math.random() - 0.5) * 15  // Random Z position in aquarium depth
+                        (Math.random() > 0.5 ? -20 : 20), // Start at safe spawn position
+                        (Math.random() - 0.5) * 6, // Different heights
+                        (Math.random() - 0.5) * 20 // Much larger depth separation to prevent overlap
                     ),
                     targetVelocity: new THREE.Vector3(),
                     wanderAngle: Math.random() * Math.PI * 2,
-                    speed: 0.015 + Math.random() * 0.02,
+                    speed: 0.008 + Math.random() * 0.012,
                     direction: Math.random() > 0.5 ? 1 : -1, // Swimming direction
                     phaseOffset: Math.random() * Math.PI * 2, // Random phase for motion variation
                     swayAmplitude: 0.3 + Math.random() * 0.7, // Random sway intensity
-                    swaySpeed: 0.5 + Math.random() * 1.5, // Random sway speed
-                    
-                    // Natural fish swimming parameters
-                    bodyWavePhase: Math.random() * Math.PI * 2, // Body undulation phase
-                    tailBeatFreq: 2 + Math.random() * 2, // Tail beating frequency
-                    swimming: {
-                        forward: new THREE.Vector3(
-                            Math.cos(Math.random() * Math.PI * 2), 
-                            0, 
-                            Math.sin(Math.random() * Math.PI * 2)
-                        ).normalize(), // Random initial direction
-                        path: [], // Swimming path history
-                        turning: false,
-                        turnStartTime: 0,
-                        targetAngle: 0, // Target angle for turning
-                        cruiseSpeed: 0.025 + Math.random() * 0.015,
-                        burstSpeed: 0.08 + Math.random() * 0.04
-                    }
+                    swaySpeed: 0.5 + Math.random() * 1.5 // Random sway speed
                 };
 
                 // Setup individual animation mixer for each fish
@@ -274,18 +252,20 @@
                 fish.mesh.position.copy(fish.position);
                 
                 // Size based on depth - closer fish (positive Z) are bigger, distant fish (negative Z) are smaller
-                const baseSize = 1.0; // Reduced from 2.0 to make fish smaller
-                const depthScale = 1.0 + (fish.position.z / 20.0); // Scale factor based on Z position
-                const finalScale = Math.max(0.2, Math.min(1.5, baseSize * depthScale)); // Reduced max size from 5.0 to 1.5
+                const baseSize = 2.0;
+                const depthScale = 1.0 + (fish.position.z / 20.0); // Scale factor based on Z position (adjusted for larger depth range)
+                const finalScale = Math.max(0.3, Math.min(5.0, baseSize * depthScale)); // Wider scale range for better depth perception
                 
                 fish.mesh.scale.set(finalScale, finalScale, finalScale);
                 
-                // Orient fish for top-down view - adjust for sideways model
-                const angle = Math.atan2(fish.velocity.z, fish.velocity.x);
-                fish.mesh.rotation.y = angle - Math.PI / 2; // Subtract 90° to correct sideways orientation (try opposite)
-                
-                // Fish orientation: 0 degrees (no rotation)
-                fish.mesh.rotation.x = 0; // 0 degrees - no X rotation
+                // Orient fish for front view - they should face their swimming direction
+                if (fish.direction === -1) {
+                    // Swimming left - face left
+                    fish.mesh.rotation.y = Math.PI; // 180 degrees - face left
+                } else {
+                    // Swimming right - face right (default orientation)
+                    fish.mesh.rotation.y = 0; // 0 degrees - face right
+                }
                 
                 console.log('Fish at Z:', fish.position.z.toFixed(1), 'Scale:', finalScale.toFixed(1), 'Direction:', fish.direction);
                 console.log('Fish created at:', fish.position);
@@ -294,8 +274,8 @@
             }
 
             setupInteraction() {
-                // Mouse/touch move interaction
-                const handleMove = (event) => {
+                // Touch and mouse interaction
+                const handleInteraction = (event) => {
                     const rect = this.renderer.domElement.getBoundingClientRect();
                     const clientX = event.clientX || (event.touches && event.touches[0].clientX) || 0;
                     const clientY = event.clientY || (event.touches && event.touches[0].clientY) || 0;
@@ -311,199 +291,42 @@
                     );
                 };
 
-                // Click interactions
-                const handleClick = (event) => {
-                    const rect = this.renderer.domElement.getBoundingClientRect();
-                    const clientX = event.clientX || (event.touches && event.touches[0].clientX) || 0;
-                    const clientY = event.clientY || (event.touches && event.touches[0].clientY) || 0;
-                    
-                    const mouseX = ((clientX - rect.left) / rect.width) * 2 - 1;
-                    const mouseY = -((clientY - rect.top) / rect.height) * 2 + 1;
-                    
-                    // Convert click to world coordinates
-                    this.clickPosition.set(
-                        mouseX * 15,
-                        mouseY * 10,
-                        0
-                    );
-                    
-                    const currentTime = Date.now();
-                    const timeSinceLastClick = currentTime - this.lastClickTime;
-                    
-                    if (timeSinceLastClick < this.clickDelay) {
-                        // Double click - change fish directions
-                        this.handleDoubleClick();
-                        console.log('Double click - fish changing direction');
-                    } else {
-                        // Single click - scare fish
-                        this.handleSingleClick();
-                        console.log('Single click - scaring fish at:', this.clickPosition);
-                    }
-                    
-                    this.lastClickTime = currentTime;
-                };
-
-                document.addEventListener('mousemove', handleMove);
-                document.addEventListener('touchmove', handleMove, { passive: true });
-                document.addEventListener('click', handleClick);
-                document.addEventListener('touchstart', handleClick, { passive: true });
-            }
-
-            handleSingleClick() {
-                // Activate scare effect
-                this.scareEffect = true;
-                
-                // Reset scare effect after 2 seconds
-                setTimeout(() => {
-                    this.scareEffect = false;
-                }, 2000);
-            }
-
-            handleDoubleClick() {
-                // Make all fish turn and swim in random new directions
-                this.fishes.forEach(fish => {
-                    // Give fish completely new random velocity direction
-                    const angle = Math.random() * Math.PI * 2; // Random angle 0-360°
-                    const speed = 0.02 + Math.random() * 0.02; // Random speed
-                    
-                    fish.velocity.set(
-                        Math.cos(angle) * speed,
-                        0,
-                        Math.sin(angle) * speed
-                    );
-                    
-                    console.log('Fish changed to new direction:', Math.round(angle * 180 / Math.PI) + '°');
-                });
-            }
-
-            getScareFactor(fish) {
-                if (!this.scareEffect) return new THREE.Vector3(0, 0, 0);
-                
-                // Calculate distance from click position
-                const distance = fish.position.distanceTo(this.clickPosition);
-                
-                if (distance > this.scareRadius) return new THREE.Vector3(0, 0, 0);
-                
-                // Create flee vector (away from click)
-                const fleeVector = fish.position.clone().sub(this.clickPosition);
-                fleeVector.normalize();
-                
-                // Stronger effect for closer fish
-                const intensity = (this.scareRadius - distance) / this.scareRadius;
-                fleeVector.multiplyScalar(intensity * 0.1);
-                
-                return fleeVector;
+                document.addEventListener('mousemove', handleInteraction);
+                document.addEventListener('touchmove', handleInteraction, { passive: true });
+                document.addEventListener('touchstart', handleInteraction, { passive: true });
             }
 
             updateFish(fish, deltaTime) {
-                const time = this.clock.getElapsedTime();
+                // Always use consistent horizontal movement
+                fish.velocity.set(fish.direction * 0.03, 0, 0);
                 
-                // Natural fish swimming behavior state machine
-                this.updateFishBehavior(fish, time, deltaTime);
-                
-                // Calculate natural swimming forces
-                const swimming = this.calculateSwimmingForces(fish, time);
-                const separation = this.separate(fish);
-                const scareForce = this.getScareFactor(fish);
-                
-                // Priority: Scare > Swimming > Separation
-                if (scareForce.length() > 0) {
-                    // Burst swimming when scared
-                    fish.targetVelocity.copy(scareForce);
-                    fish.swimming.turning = true;
-                    fish.swimming.turnStartTime = time;
-                } else {
-                    // Normal swimming behavior
-                    fish.targetVelocity.copy(swimming);
-                    fish.targetVelocity.add(separation.multiplyScalar(0.3));
+                // Only add behavioral forces in center area
+                if (Math.abs(fish.position.x) < 10) {
+                    const separation = this.separate(fish);
+                    const wander = this.wander(fish);
+                    
+                    // Add subtle behavioral forces
+                    fish.velocity.add(separation.multiplyScalar(0.5));
+                    fish.velocity.add(wander.multiplyScalar(0.1));
+                    
+                    // Add swimming sway
+                    const time = this.clock.getElapsedTime();
+                    const swayY = Math.sin(time * fish.swaySpeed + fish.phaseOffset) * fish.swayAmplitude * 0.005;
+                    fish.velocity.add(new THREE.Vector3(0, swayY, 0));
                 }
-                
-                // Smooth velocity transition with realistic fish dynamics
-                const lerpSpeed = fish.swimming.turning ? 0.15 : 0.08;
-                fish.velocity.lerp(fish.targetVelocity, lerpSpeed);
-                
-                // Update position with undulating movement
-                this.updateFishPosition(fish, time, deltaTime);
-                
-                // Keep fish in bounds
-                this.keepInBounds(fish);
-                
-                // Update visual representation
-                this.updateFishVisuals(fish, time);
-            }
 
-            updateFishBehavior(fish, time, deltaTime) {
-                // Occasional direction changes
-                if (!fish.swimming.turning && Math.random() < 0.001) {
-                    fish.swimming.turning = true;
-                    fish.swimming.turnStartTime = time;
-                    
-                    // Set target direction for gradual turning
-                    const currentAngle = Math.atan2(fish.swimming.forward.z, fish.swimming.forward.x);
-                    const angleChange = (Math.random() - 0.5) * Math.PI * 0.8; // Max 144° change
-                    fish.swimming.targetAngle = currentAngle + angleChange;
-                    
-                    console.log('Fish starting turn by:', Math.round(angleChange * 180 / Math.PI) + '°');
-                }
-                
-                // Gradual turning - fish turns its body slowly
-                if (fish.swimming.turning) {
-                    const currentAngle = Math.atan2(fish.swimming.forward.z, fish.swimming.forward.x);
-                    const angleDiff = fish.swimming.targetAngle - currentAngle;
-                    
-                    // Normalize angle difference
-                    let normalizedDiff = angleDiff;
-                    while (normalizedDiff > Math.PI) normalizedDiff -= 2 * Math.PI;
-                    while (normalizedDiff < -Math.PI) normalizedDiff += 2 * Math.PI;
-                    
-                    // Turn gradually
-                    const turnRate = 1.5; // radians per second
-                    const turnAmount = Math.sign(normalizedDiff) * Math.min(Math.abs(normalizedDiff), turnRate * deltaTime);
-                    const newAngle = currentAngle + turnAmount;
-                    
-                    fish.swimming.forward.set(Math.cos(newAngle), 0, Math.sin(newAngle));
-                    fish.swimming.forward.normalize();
-                    
-                    // Stop turning when close to target
-                    if (Math.abs(normalizedDiff) < 0.1) {
-                        fish.swimming.turning = false;
-                        console.log('Fish completed turn');
-                    }
-                }
-            }
-
-            calculateSwimmingForces(fish, time) {
-                // Fish ALWAYS moves forward in the direction it's facing
-                // No sideways movement - only forward thrust
-                const forwardForce = fish.swimming.forward.clone();
-                const currentSpeed = fish.swimming.cruiseSpeed;
-                forwardForce.multiplyScalar(currentSpeed);
-                
-                // Fish velocity = forward direction only (no wandering, no sideways)
-                return forwardForce;
-            }
-
-            updateFishPosition(fish, time, deltaTime) {
-                // Store path for realistic trailing behavior
-                fish.swimming.path.push(fish.position.clone());
-                if (fish.swimming.path.length > 10) {
-                    fish.swimming.path.shift();
-                }
-                
                 // Update position
                 fish.position.add(fish.velocity);
-            }
 
-            updateFishVisuals(fish, time) {
+                // Wrap around screen bounds
+                this.wrapAround(fish);
+
                 // Update mesh position
                 fish.mesh.position.copy(fish.position);
                 
-                // Adjust for fish model's forward direction being sideways
-                if (fish.velocity.length() > 0.001) {
-                    const angle = Math.atan2(fish.velocity.z, fish.velocity.x);
-                    fish.mesh.rotation.y = angle - Math.PI / 2; // Subtract 90° to correct sideways orientation (try opposite)
-                    fish.mesh.rotation.x = 0; // Keep at 0 degrees
-                    fish.mesh.rotation.z = 0; // No artificial sway - animation handles it
+                // Debug position
+                if (Math.abs(fish.position.x) > 20) {
+                    console.log('Fish at edge position:', fish.position.x, 'velocity:', fish.velocity.x);
                 }
             }
 
@@ -598,54 +421,37 @@
                 return wander;
             }
 
-            keepInBounds(fish) {
-                // Aquarium boundaries - change direction instead of bouncing
-                const tankWidth = 15;   // X bounds
-                const tankDepth = 10;   // Z bounds
-                const buffer = 1; // Small buffer zone
-                
-                let hitBoundary = false;
-                
-                // X boundaries (left-right walls)
-                if (fish.position.x > tankWidth - buffer) {
-                    fish.position.x = tankWidth - buffer;
-                    fish.swimming.forward.x = -Math.abs(fish.swimming.forward.x); // Force leftward
-                    hitBoundary = true;
+            wrapAround(fish) {
+                // Fixed wrap boundaries - spawn within safe zone
+                if (fish.position.x > 25) {
+                    fish.position.x = -20; // Spawn on visible left side
+                    fish.position.y = (Math.random() - 0.5) * 8;
+                    fish.position.z = (Math.random() - 0.5) * 20;
+                    this.updateFishScale(fish);
+                    console.log('Fish wrapped right to left, teleported to:', fish.position.x);
                 }
-                if (fish.position.x < -tankWidth + buffer) {
-                    fish.position.x = -tankWidth + buffer;
-                    fish.swimming.forward.x = Math.abs(fish.swimming.forward.x); // Force rightward  
-                    hitBoundary = true;
+                if (fish.position.x < -25) {
+                    fish.position.x = 20; // Spawn on visible right side  
+                    fish.position.y = (Math.random() - 0.5) * 8;
+                    fish.position.z = (Math.random() - 0.5) * 20;
+                    this.updateFishScale(fish);
+                    console.log('Fish wrapped left to right, teleported to:', fish.position.x);
                 }
                 
-                // Z boundaries (front-back walls)
-                if (fish.position.z > tankDepth - buffer) {
-                    fish.position.z = tankDepth - buffer;
-                    fish.swimming.forward.z = -Math.abs(fish.swimming.forward.z); // Force backward
-                    hitBoundary = true;
-                }
-                if (fish.position.z < -tankDepth + buffer) {
-                    fish.position.z = -tankDepth + buffer;
-                    fish.swimming.forward.z = Math.abs(fish.swimming.forward.z); // Force forward
-                    hitBoundary = true;
-                }
+                // Keep fish within vertical bounds
+                if (fish.position.y > 6) fish.position.y = 6;
+                if (fish.position.y < -6) fish.position.y = -6;
                 
-                // Normalize direction vector after boundary adjustment
-                if (hitBoundary) {
-                    fish.swimming.forward.normalize();
-                    // Don't set turning state for boundary hits - just redirect
-                    console.log('Fish hit boundary, redirected');
-                }
-                
-                // Keep fish at water surface level
-                fish.position.y = 0;
+                // Keep fish within expanded depth bounds for proper separation
+                if (fish.position.z > 12) fish.position.z = 12;
+                if (fish.position.z < -12) fish.position.z = -12;
             }
 
             updateFishScale(fish) {
-                // Update fish size based on depth position - reduced to 3/4 size
-                const baseSize = 1.0; // Reduced from 2.0
+                // Update fish size based on depth position (adjusted for larger depth range)
+                const baseSize = 2.0;
                 const depthScale = 1.0 + (fish.position.z / 20.0);
-                const finalScale = Math.max(0.2, Math.min(1.5, baseSize * depthScale)); // Max 1.5 instead of 5.0
+                const finalScale = Math.max(0.3, Math.min(5.0, baseSize * depthScale));
                 fish.mesh.scale.set(finalScale, finalScale, finalScale);
             }
 
