@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fish Orientation Test - Glasscape</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #ffffff;
+            font-family: Arial, sans-serif;
+        }
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            z-index: 100;
+            font-size: 14px;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        button {
+            margin: 2px;
+            padding: 5px 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .active {
+            background: #ff6b35 !important;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+            font-size: 12px;
+            max-width: 200px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="controls">
+            <div class="control-group">
+                <strong>X Rotation:</strong><br>
+                <button onclick="setRotation('x', 0)">0°</button>
+                <button onclick="setRotation('x', Math.PI/2)">90°</button>
+                <button onclick="setRotation('x', Math.PI)">180°</button>
+                <button onclick="setRotation('x', -Math.PI/2)">-90°</button>
+            </div>
+            <div class="control-group">
+                <strong>Y Rotation:</strong><br>
+                <button onclick="setRotation('y', 0)">0°</button>
+                <button onclick="setRotation('y', Math.PI/2)">90°</button>
+                <button onclick="setRotation('y', Math.PI)">180°</button>
+                <button onclick="setRotation('y', -Math.PI/2)">-90°</button>
+            </div>
+            <div class="control-group">
+                <strong>Z Rotation:</strong><br>
+                <button onclick="setRotation('z', 0)">0°</button>
+                <button onclick="setRotation('z', Math.PI/2)">90°</button>
+                <button onclick="setRotation('z', Math.PI)">180°</button>
+                <button onclick="setRotation('z', -Math.PI/2)">-90°</button>
+            </div>
+            <div class="control-group">
+                <strong>Camera View:</strong><br>
+                <button onclick="setCameraView('side')">Side View</button>
+                <button onclick="setCameraView('top')" class="active">Top View</button>
+                <button onclick="setCameraView('front')">Front View</button>
+            </div>
+            <div class="control-group">
+                <button onclick="resetFish()" style="background: #f44336;">Reset Fish</button>
+                <button onclick="copyCode()" style="background: #2196F3;">Copy Code</button>
+            </div>
+        </div>
+        
+        <div id="info">
+            <strong>Current Rotation:</strong><br>
+            X: <span id="rotX">90°</span><br>
+            Y: <span id="rotY">-90°</span><br>
+            Z: <span id="rotZ">0°</span><br><br>
+            <strong>Instructions:</strong><br>
+            • Fish should point in swimming direction<br>
+            • Fish should be oriented naturally for top-down view<br>
+            • Test different combinations
+        </div>
+    </div>
+
+    <!-- Three.js CDN -->
+    <script src="https://unpkg.com/three@0.140.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.140.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        class FishOrientationTest {
+            constructor() {
+                this.scene = null;
+                this.camera = null;
+                this.renderer = null;
+                this.fish = null;
+                this.currentRotation = { x: Math.PI/2, y: -Math.PI/2, z: 0 };
+                this.currentView = 'top';
+                
+                this.init();
+            }
+
+            init() {
+                this.setupScene();
+                this.setupLights();
+                this.loadFish();
+                this.animate();
+            }
+
+            setupScene() {
+                // Scene
+                this.scene = new THREE.Scene();
+
+                // Camera - Top-down view initially
+                this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.camera.position.set(0, 15, 0);
+                this.camera.lookAt(0, 0, 0);
+
+                // Renderer
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setClearColor(0xffffff);
+                
+                document.getElementById('container').appendChild(this.renderer.domElement);
+
+                // Handle resize
+                window.addEventListener('resize', () => this.onWindowResize(), false);
+            }
+
+            setupLights() {
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+                this.scene.add(ambientLight);
+
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+                directionalLight.position.set(10, 10, 5);
+                this.scene.add(directionalLight);
+
+                // Add helper grid for reference
+                const gridHelper = new THREE.GridHelper(20, 20, 0xcccccc, 0xeeeeee);
+                this.scene.add(gridHelper);
+
+                // Add coordinate axes helper
+                const axesHelper = new THREE.AxesHelper(5);
+                this.scene.add(axesHelper);
+            }
+
+            loadFish() {
+                // Create placeholder first to ensure something shows up
+                this.createPlaceholderFish();
+                
+                // Try to load the actual model
+                const loader = new THREE.GLTFLoader();
+                
+                loader.load(
+                    'koi_fish.glb',
+                    (gltf) => {
+                        console.log('Fish model loaded successfully');
+                        
+                        // Remove placeholder
+                        if (this.fish) {
+                            this.scene.remove(this.fish);
+                        }
+                        
+                        this.fish = gltf.scene;
+                        this.fish.position.set(0, 0, 0);
+                        this.fish.scale.set(2, 2, 2); // Make it bigger for testing
+                        this.applyCurrentRotation();
+                        this.scene.add(this.fish);
+                        
+                        // Setup animation if available
+                        if (gltf.animations && gltf.animations.length > 0) {
+                            this.mixer = new THREE.AnimationMixer(this.fish);
+                            const action = this.mixer.clipAction(gltf.animations[0]);
+                            action.play();
+                        }
+                        
+                        console.log('Fish model added to scene');
+                    },
+                    (progress) => {
+                        console.log('Loading progress:', progress);
+                    },
+                    (error) => {
+                        console.log('Failed to load fish model:', error);
+                        console.log('Using placeholder fish for testing');
+                    }
+                );
+            }
+
+            createPlaceholderFish() {
+                // Create a simple fish-like shape pointing forward (positive Z)
+                const geometry = new THREE.ConeGeometry(0.5, 3, 8);
+                const material = new THREE.MeshLambertMaterial({ color: 0xff6b35 });
+                this.fish = new THREE.Mesh(geometry, material);
+                this.fish.position.set(0, 1, 0); // Slightly above grid
+                this.applyCurrentRotation();
+                this.scene.add(this.fish);
+                console.log('Placeholder fish created');
+            }
+
+            applyCurrentRotation() {
+                if (this.fish) {
+                    this.fish.rotation.x = this.currentRotation.x;
+                    this.fish.rotation.y = this.currentRotation.y;
+                    this.fish.rotation.z = this.currentRotation.z;
+                    this.updateRotationDisplay();
+                }
+            }
+
+            updateRotationDisplay() {
+                document.getElementById('rotX').textContent = Math.round(this.currentRotation.x * 180 / Math.PI) + '°';
+                document.getElementById('rotY').textContent = Math.round(this.currentRotation.y * 180 / Math.PI) + '°';
+                document.getElementById('rotZ').textContent = Math.round(this.currentRotation.z * 180 / Math.PI) + '°';
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+
+                // Update animation mixer if available
+                if (this.mixer) {
+                    this.mixer.update(0.016);
+                }
+
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            onWindowResize() {
+                this.camera.aspect = window.innerWidth / window.innerHeight;
+                this.camera.updateProjectionMatrix();
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+        }
+
+        let fishTest = null;
+
+        // Initialize when page loads
+        window.addEventListener('load', () => {
+            fishTest = new FishOrientationTest();
+        });
+
+        // Control functions
+        function setRotation(axis, value) {
+            if (fishTest && fishTest.fish) {
+                fishTest.currentRotation[axis] = value;
+                fishTest.applyCurrentRotation();
+                
+                // Update button states
+                document.querySelectorAll(`[onclick*="${axis}"]`).forEach(btn => btn.classList.remove('active'));
+                event.target.classList.add('active');
+            }
+        }
+
+        function setCameraView(view) {
+            if (!fishTest) return;
+            
+            fishTest.currentView = view;
+            
+            switch(view) {
+                case 'top':
+                    fishTest.camera.position.set(0, 15, 0);
+                    fishTest.camera.lookAt(0, 0, 0);
+                    break;
+                case 'side':
+                    fishTest.camera.position.set(15, 0, 0);
+                    fishTest.camera.lookAt(0, 0, 0);
+                    break;
+                case 'front':
+                    fishTest.camera.position.set(0, 0, 15);
+                    fishTest.camera.lookAt(0, 0, 0);
+                    break;
+            }
+            
+            // Update button states
+            document.querySelectorAll(`[onclick*="setCameraView"]`).forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function resetFish() {
+            if (fishTest && fishTest.fish) {
+                fishTest.currentRotation = { x: 0, y: 0, z: 0 };
+                fishTest.applyCurrentRotation();
+                
+                // Reset button states
+                document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            }
+        }
+
+        function copyCode() {
+            const code = `
+// Current fish orientation code:
+fish.mesh.rotation.x = ${fishTest.currentRotation.x}; // ${Math.round(fishTest.currentRotation.x * 180 / Math.PI)}°
+fish.mesh.rotation.y = ${fishTest.currentRotation.y}; // ${Math.round(fishTest.currentRotation.y * 180 / Math.PI)}°  
+fish.mesh.rotation.z = ${fishTest.currentRotation.z}; // ${Math.round(fishTest.currentRotation.z * 180 / Math.PI)}°
+
+// Camera position (${fishTest.currentView} view):
+camera.position.set(${fishTest.camera.position.x}, ${fishTest.camera.position.y}, ${fishTest.camera.position.z});
+            `.trim();
+            
+            navigator.clipboard.writeText(code).then(() => {
+                alert('Code copied to clipboard!');
+            });
+        }
+    </script>
+</body>
+</html>
